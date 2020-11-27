@@ -1,667 +1,394 @@
-/** @license
- * DHTML Snowstorm! JavaScript-based snow for web pages
- * Making it snow on the internets since 2003. You're welcome.
- * -----------------------------------------------------------
- * Version 1.44.20131208 (Previous rev: 1.44.20131125)
- * Copyright (c) 2007, Scott Schiller. All rights reserved.
- * Code provided under the BSD License
- * http://schillmania.com/projects/snowstorm/license.txt
- */
+var retina = window.devicePixelRatio,
 
-/*jslint nomen: true, plusplus: true, sloppy: true, vars: true, white: true */
-/*global window, document, navigator, clearInterval, setInterval */
+    // Math shorthands
+    PI = Math.PI,
+    sqrt = Math.sqrt,
+    round = Math.round,
+    random = Math.random,
+    cos = Math.cos,
+    sin = Math.sin,
 
-console.log("ici snowstorm")
-var snowStorm = (function(window, document) {
+    // Local WindowAnimationTiming interface
+    rAF = window.requestAnimationFrame,
+    cAF = window.cancelAnimationFrame || window.cancelRequestAnimationFrame,
+    _now = Date.now || function () {return new Date().getTime();};
 
-  // --- common properties ---
-
-  this.autoStart = true;          // Whether the snow should start automatically or not.
-  this.excludeMobile = true;      // Snow is likely to be bad news for mobile phones' CPUs (and batteries.) Enable at your own risk.
-  this.flakesMax = 128;           // Limit total amount of snow made (falling + sticking)
-  this.flakesMaxActive = 64;      // Limit amount of snow falling at once (less = lower CPU use)
-  this.animationInterval = 33;    // Theoretical "miliseconds per frame" measurement. 20 = fast + smooth, but high CPU use. 50 = more conservative, but slower
-  this.useGPU = true;             // Enable transform-based hardware acceleration, reduce CPU load.
-  this.className = null;          // CSS class name for further customization on snow elements
-  this.excludeMobile = true;      // Snow is likely to be bad news for mobile phones' CPUs (and batteries.) By default, be nice.
-  this.flakeBottom = null;        // Integer for Y axis snow limit, 0 or null for "full-screen" snow effect
-  this.followMouse = true;        // Snow movement can respond to the user's mouse
-  this.snowColor = '#ffd700';        // Don't eat (or use?) yellow snow.
-  this.snowCharacter = '&bull;';  // &bull; = bullet, &middot; is square on some systems etc.
-  this.snowStick = true;          // Whether or not snow should "stick" at the bottom. When off, will never collect.
-  this.targetElement = null;      // element which snow will be appended to (null = document.body) - can be an element ID eg. 'myDiv', or a DOM node reference
-  this.useMeltEffect = true;      // When recycling fallen snow (or rarely, when falling), have it "melt" and fade out if browser supports it
-  this.useTwinkleEffect = false;  // Allow snow to randomly "flicker" in and out of view while falling
-  this.usePositionFixed = false;  // true = snow does not shift vertically when scrolling. May increase CPU load, disabled by default - if enabled, used only where supported
-  this.usePixelPosition = false;  // Whether to use pixel values for snow top/left vs. percentages. Auto-enabled if body is position:relative or targetElement is specified.
-
-  // --- less-used bits ---
-
-  this.freezeOnBlur = true;       // Only snow when the window is in focus (foreground.) Saves CPU.
-  this.flakeLeftOffset = 0;       // Left margin/gutter space on edge of container (eg. browser window.) Bump up these values if seeing horizontal scrollbars.
-  this.flakeRightOffset = 0;      // Right margin/gutter space on edge of container
-  this.flakeWidth = 8;            // Max pixel width reserved for snow element
-  this.flakeHeight = 8;           // Max pixel height reserved for snow element
-  this.vMaxX = 5;                 // Maximum X velocity range for snow
-  this.vMaxY = 4;                 // Maximum Y velocity range for snow
-  this.zIndex = 0;                // CSS stacking order applied to each snowflake
-
-  // --- "No user-serviceable parts inside" past this point, yadda yadda ---
-
-  var storm = this,
-  features,
-  // UA sniffing and backCompat rendering mode checks for fixed position, etc.
-  isIE = navigator.userAgent.match(/msie/i),
-  isIE6 = navigator.userAgent.match(/msie 6/i),
-  isMobile = navigator.userAgent.match(/mobile|opera m(ob|in)/i),
-  isBackCompatIE = (isIE && document.compatMode === 'BackCompat'),
-  noFixed = (isBackCompatIE || isIE6),
-  screenX = null, screenX2 = null, screenY = null, scrollY = null, docHeight = null, vRndX = null, vRndY = null,
-  windOffset = 1,
-  windMultiplier = 2,
-  flakeTypes = 6,
-  fixedForEverything = false,
-  targetElementIsRelative = false,
-  opacitySupported = (function(){
-    try {
-      document.createElement('div').style.opacity = '0.5';
-    } catch(e) {
-      return false;
-    }
-    return true;
-  }()),
-  didInit = false,
-  docFrag = document.createDocumentFragment();
-
-  features = (function() {
-
-    var getAnimationFrame;
-
-    /**
-     * hat tip: paul irish
-     * http://paulirish.com/2011/requestanimationframe-for-smart-animating/
-     * https://gist.github.com/838785
-     */
-
-    function timeoutShim(callback) {
-      window.setTimeout(callback, 1000/(storm.animationInterval || 20));
-    }
-
-    var _animationFrame = (window.requestAnimationFrame ||
-        window.webkitRequestAnimationFrame ||
-        window.mozRequestAnimationFrame ||
-        window.oRequestAnimationFrame ||
-        window.msRequestAnimationFrame ||
-        timeoutShim);
-
-    // apply to window, avoid "illegal invocation" errors in Chrome
-    getAnimationFrame = _animationFrame ? function() {
-      return _animationFrame.apply(window, arguments);
-    } : null;
-
-    var testDiv;
-
-    testDiv = document.createElement('div');
-
-    function has(prop) {
-
-      // test for feature support
-      var result = testDiv.style[prop];
-      return (result !== undefined ? prop : null);
-
-    }
-
-    // note local scope.
-    var localFeatures = {
-
-      transform: {
-        ie:  has('-ms-transform'),
-        moz: has('MozTransform'),
-        opera: has('OTransform'),
-        webkit: has('webkitTransform'),
-        w3: has('transform'),
-        prop: null // the normalized property value
-      },
-
-      getAnimationFrame: getAnimationFrame
-
-    };
-
-    localFeatures.transform.prop = (
-      localFeatures.transform.w3 ||
-      localFeatures.transform.moz ||
-      localFeatures.transform.webkit ||
-      localFeatures.transform.ie ||
-      localFeatures.transform.opera
-    );
-
-    testDiv = null;
-
-    return localFeatures;
-
-  }());
-
-  this.timer = null;
-  this.flakes = [];
-  this.disabled = false;
-  this.active = false;
-  this.meltFrameCount = 20;
-  this.meltFrames = [];
-
-  this.setXY = function(o, x, y) {
-
-    if (!o) {
-      return false;
-    }
-
-    if (storm.usePixelPosition || targetElementIsRelative) {
-
-      o.style.left = (x - storm.flakeWidth) + 'px';
-      o.style.top = (y - storm.flakeHeight) + 'px';
-
-    } else if (noFixed) {
-
-      o.style.right = (100-(x/screenX*100)) + '%';
-      // avoid creating vertical scrollbars
-      o.style.top = (Math.min(y, docHeight-storm.flakeHeight)) + 'px';
-
-    } else {
-
-      if (!storm.flakeBottom) {
-
-        // if not using a fixed bottom coordinate...
-        o.style.right = (100-(x/screenX*100)) + '%';
-        o.style.bottom = (100-(y/screenY*100)) + '%';
-
-      } else {
-
-        // absolute top.
-        o.style.right = (100-(x/screenX*100)) + '%';
-        o.style.top = (Math.min(y, docHeight-storm.flakeHeight)) + 'px';
-
-      }
-
-    }
-
-  };
-
-  this.events = (function() {
-
-    var old = (!window.addEventListener && window.attachEvent), slice = Array.prototype.slice,
-    evt = {
-      add: (old?'attachEvent':'addEventListener'),
-      remove: (old?'detachEvent':'removeEventListener')
-    };
-
-    function getArgs(oArgs) {
-      var args = slice.call(oArgs), len = args.length;
-      if (old) {
-        args[1] = 'on' + args[1]; // prefix
-        if (len > 3) {
-          args.pop(); // no capture
-        }
-      } else if (len === 3) {
-        args.push(false);
-      }
-      return args;
-    }
-
-    function apply(args, sType) {
-      var element = args.shift(),
-          method = [evt[sType]];
-      if (old) {
-        element[method](args[0], args[1]);
-      } else {
-        element[method].apply(element, args);
-      }
-    }
-
-    function addEvent() {
-      apply(getArgs(arguments), 'add');
-    }
-
-    function removeEvent() {
-      apply(getArgs(arguments), 'remove');
-    }
-
-    return {
-      add: addEvent,
-      remove: removeEvent
-    };
-
-  }());
-
-  function rnd(n,min) {
-    if (isNaN(min)) {
-      min = 0;
-    }
-    return (Math.random()*n)+min;
+// Local WindowAnimationTiming interface polyfill
+(function (w) {
+  /**
+				* Fallback implementation.
+				*/
+  var prev = _now();
+  function fallback(fn) {
+    var curr = _now();
+    var ms = Math.max(0, 16 - (curr - prev));
+    var req = setTimeout(fn, ms);
+    prev = curr;
+    return req;
   }
 
-  function plusMinus(n) {
-    return (parseInt(rnd(2),10)===1?n*-1:n);
+  /**
+				* Cancel.
+				*/
+  var cancel = w.cancelAnimationFrame
+  || w.webkitCancelAnimationFrame
+  || w.clearTimeout;
+
+  rAF = w.requestAnimationFrame
+  || w.webkitRequestAnimationFrame
+  || fallback;
+
+  cAF = function(id){
+    cancel.call(w, id);
+  };
+}(window));
+
+document.addEventListener("DOMContentLoaded", function() {
+  var speed = 50,
+      duration = (1.0 / speed),
+      confettiRibbonCount = 11,
+      ribbonPaperCount = 30,
+      ribbonPaperDist = 8.0,
+      ribbonPaperThick = 8.0,
+      confettiPaperCount = 95,
+      DEG_TO_RAD = PI / 180,
+      RAD_TO_DEG = 180 / PI,
+      colors = [
+        ["#df0049", "#660671"],
+        ["#00e857", "#005291"],
+        ["#2bebbc", "#05798a"],
+        ["#ffd200", "#b06c00"]
+      ];
+
+  function Vector2(_x, _y) {
+    this.x = _x, this.y = _y;
+    this.Length = function() {
+      return sqrt(this.SqrLength());
+    }
+    this.SqrLength = function() {
+      return this.x * this.x + this.y * this.y;
+    }
+    this.Add = function(_vec) {
+      this.x += _vec.x;
+      this.y += _vec.y;
+    }
+    this.Sub = function(_vec) {
+      this.x -= _vec.x;
+      this.y -= _vec.y;
+    }
+    this.Div = function(_f) {
+      this.x /= _f;
+      this.y /= _f;
+    }
+    this.Mul = function(_f) {
+      this.x *= _f;
+      this.y *= _f;
+    }
+    this.Normalize = function() {
+      var sqrLen = this.SqrLength();
+      if (sqrLen != 0) {
+        var factor = 1.0 / sqrt(sqrLen);
+        this.x *= factor;
+        this.y *= factor;
+      }
+    }
+    this.Normalized = function() {
+      var sqrLen = this.SqrLength();
+      if (sqrLen != 0) {
+        var factor = 1.0 / sqrt(sqrLen);
+        return new Vector2(this.x * factor, this.y * factor);
+      }
+      return new Vector2(0, 0);
+    }
+  }
+  Vector2.Lerp = function(_vec0, _vec1, _t) {
+    return new Vector2((_vec1.x - _vec0.x) * _t + _vec0.x, (_vec1.y - _vec0.y) * _t + _vec0.y);
+  }
+  Vector2.Distance = function(_vec0, _vec1) {
+    return sqrt(Vector2.SqrDistance(_vec0, _vec1));
+  }
+  Vector2.SqrDistance = function(_vec0, _vec1) {
+    var x = _vec0.x - _vec1.x;
+    var y = _vec0.y - _vec1.y;
+    return (x * x + y * y + z * z);
+  }
+  Vector2.Scale = function(_vec0, _vec1) {
+    return new Vector2(_vec0.x * _vec1.x, _vec0.y * _vec1.y);
+  }
+  Vector2.Min = function(_vec0, _vec1) {
+    return new Vector2(Math.min(_vec0.x, _vec1.x), Math.min(_vec0.y, _vec1.y));
+  }
+  Vector2.Max = function(_vec0, _vec1) {
+    return new Vector2(Math.max(_vec0.x, _vec1.x), Math.max(_vec0.y, _vec1.y));
+  }
+  Vector2.ClampMagnitude = function(_vec0, _len) {
+    var vecNorm = _vec0.Normalized;
+    return new Vector2(vecNorm.x * _len, vecNorm.y * _len);
+  }
+  Vector2.Sub = function(_vec0, _vec1) {
+    return new Vector2(_vec0.x - _vec1.x, _vec0.y - _vec1.y, _vec0.z - _vec1.z);
   }
 
-  this.randomizeWind = function() {
-    var i;
-    vRndX = plusMinus(rnd(storm.vMaxX,0.2));
-    vRndY = rnd(storm.vMaxY,0.2);
-    if (this.flakes) {
-      for (i=0; i<this.flakes.length; i++) {
-        if (this.flakes[i].active) {
-          this.flakes[i].setVelocities();
-        }
+  function EulerMass(_x, _y, _mass, _drag) {
+    this.position = new Vector2(_x, _y);
+    this.mass = _mass;
+    this.drag = _drag;
+    this.force = new Vector2(0, 0);
+    this.velocity = new Vector2(0, 0);
+    this.AddForce = function(_f) {
+      this.force.Add(_f);
+    }
+    this.Integrate = function(_dt) {
+      var acc = this.CurrentForce(this.position);
+      acc.Div(this.mass);
+      var posDelta = new Vector2(this.velocity.x, this.velocity.y);
+      posDelta.Mul(_dt);
+      this.position.Add(posDelta);
+      acc.Mul(_dt);
+      this.velocity.Add(acc);
+      this.force = new Vector2(0, 0);
+    }
+    this.CurrentForce = function(_pos, _vel) {
+      var totalForce = new Vector2(this.force.x, this.force.y);
+      var speed = this.velocity.Length();
+      var dragVel = new Vector2(this.velocity.x, this.velocity.y);
+      dragVel.Mul(this.drag * this.mass * speed);
+      totalForce.Sub(dragVel);
+      return totalForce;
+    }
+  }
+
+  function ConfettiPaper(_x, _y) {
+    this.pos = new Vector2(_x, _y);
+    this.rotationSpeed = (random() * 600 + 800);
+    this.angle = DEG_TO_RAD * random() * 360;
+    this.rotation = DEG_TO_RAD * random() * 360;
+    this.cosA = 1.0;
+    this.size = 5.0;
+    this.oscillationSpeed = (random() * 1.5 + 0.5);
+    this.xSpeed = 40.0;
+    this.ySpeed = (random() * 60 + 50.0);
+    this.corners = new Array();
+    this.time = random();
+    var ci = round(random() * (colors.length - 1));
+    this.frontColor = colors[ci][0];
+    this.backColor = colors[ci][1];
+    for (var i = 0; i < 4; i++) {
+      var dx = cos(this.angle + DEG_TO_RAD * (i * 90 + 45));
+      var dy = sin(this.angle + DEG_TO_RAD * (i * 90 + 45));
+      this.corners[i] = new Vector2(dx, dy);
+    }
+    this.Update = function(_dt) {
+      this.time += _dt;
+      this.rotation += this.rotationSpeed * _dt;
+      this.cosA = cos(DEG_TO_RAD * this.rotation);
+      this.pos.x += cos(this.time * this.oscillationSpeed) * this.xSpeed * _dt
+      this.pos.y += this.ySpeed * _dt;
+      if (this.pos.y > ConfettiPaper.bounds.y) {
+        this.pos.x = random() * ConfettiPaper.bounds.x;
+        this.pos.y = 0;
       }
     }
-  };
-
-  this.scrollHandler = function() {
-    var i;
-    // "attach" snowflakes to bottom of window if no absolute bottom value was given
-    scrollY = (storm.flakeBottom ? 0 : parseInt(window.scrollY || document.documentElement.scrollTop || (noFixed ? document.body.scrollTop : 0), 10));
-    if (isNaN(scrollY)) {
-      scrollY = 0; // Netscape 6 scroll fix
-    }
-    if (!fixedForEverything && !storm.flakeBottom && storm.flakes) {
-      for (i=0; i<storm.flakes.length; i++) {
-        if (storm.flakes[i].active === 0) {
-          storm.flakes[i].stick();
-        }
-      }
-    }
-  };
-
-  this.resizeHandler = function() {
-    if (window.innerWidth || window.innerHeight) {
-      screenX = window.innerWidth - 16 - storm.flakeRightOffset;
-      screenY = (storm.flakeBottom || window.innerHeight);
-    } else {
-      screenX = (document.documentElement.clientWidth || document.body.clientWidth || document.body.scrollWidth) - (!isIE ? 8 : 0) - storm.flakeRightOffset;
-      screenY = storm.flakeBottom || document.documentElement.clientHeight || document.body.clientHeight || document.body.scrollHeight;
-    }
-    docHeight = document.body.offsetHeight;
-    screenX2 = parseInt(screenX/2,10);
-  };
-
-  this.resizeHandlerAlt = function() {
-    screenX = storm.targetElement.offsetWidth - storm.flakeRightOffset;
-    screenY = storm.flakeBottom || storm.targetElement.offsetHeight;
-    screenX2 = parseInt(screenX/2,10);
-    docHeight = document.body.offsetHeight;
-  };
-
-  this.freeze = function() {
-    // pause animation
-    if (!storm.disabled) {
-      storm.disabled = 1;
-    } else {
-      return false;
-    }
-    storm.timer = null;
-  };
-
-  this.resume = function() {
-    if (storm.disabled) {
-       storm.disabled = 0;
-    } else {
-      return false;
-    }
-    storm.timerInit();
-  };
-
-  this.toggleSnow = function() {
-    if (!storm.flakes.length) {
-      // first run
-      storm.start();
-    } else {
-      storm.active = !storm.active;
-      if (storm.active) {
-        storm.show();
-        storm.resume();
+    this.Draw = function(_g) {
+      if (this.cosA > 0) {
+        _g.fillStyle = this.frontColor;
       } else {
-        storm.stop();
-        storm.freeze();
+        _g.fillStyle = this.backColor;
+      }
+      _g.beginPath();
+      _g.moveTo((this.pos.x + this.corners[0].x * this.size) * retina, (this.pos.y + this.corners[0].y * this.size * this.cosA) * retina);
+      for (var i = 1; i < 4; i++) {
+        _g.lineTo((this.pos.x + this.corners[i].x * this.size) * retina, (this.pos.y + this.corners[i].y * this.size * this.cosA) * retina);
+      }
+      _g.closePath();
+      _g.fill();
+    }
+  }
+  ConfettiPaper.bounds = new Vector2(0, 0);
+
+  function ConfettiRibbon(_x, _y, _count, _dist, _thickness, _angle, _mass, _drag) {
+    this.particleDist = _dist;
+    this.particleCount = _count;
+    this.particleMass = _mass;
+    this.particleDrag = _drag;
+    this.particles = new Array();
+    var ci = round(random() * (colors.length - 1));
+    this.frontColor = colors[ci][0];
+    this.backColor = colors[ci][1];
+    this.xOff = (cos(DEG_TO_RAD * _angle) * _thickness);
+    this.yOff = (sin(DEG_TO_RAD * _angle) * _thickness);
+    this.position = new Vector2(_x, _y);
+    this.prevPosition = new Vector2(_x, _y);
+    this.velocityInherit = (random() * 2 + 4);
+    this.time = random() * 100;
+    this.oscillationSpeed = (random() * 2 + 2);
+    this.oscillationDistance = (random() * 40 + 40);
+    this.ySpeed = (random() * 40 + 80);
+    for (var i = 0; i < this.particleCount; i++) {
+      this.particles[i] = new EulerMass(_x, _y - i * this.particleDist, this.particleMass, this.particleDrag);
+    }
+    this.Update = function(_dt) {
+      var i = 0;
+      this.time += _dt * this.oscillationSpeed;
+      this.position.y += this.ySpeed * _dt;
+      this.position.x += cos(this.time) * this.oscillationDistance * _dt;
+      this.particles[0].position = this.position;
+      var dX = this.prevPosition.x - this.position.x;
+      var dY = this.prevPosition.y - this.position.y;
+      var delta = sqrt(dX * dX + dY * dY);
+      this.prevPosition = new Vector2(this.position.x, this.position.y);
+      for (i = 1; i < this.particleCount; i++) {
+        var dirP = Vector2.Sub(this.particles[i - 1].position, this.particles[i].position);
+        dirP.Normalize();
+        dirP.Mul((delta / _dt) * this.velocityInherit);
+        this.particles[i].AddForce(dirP);
+      }
+      for (i = 1; i < this.particleCount; i++) {
+        this.particles[i].Integrate(_dt);
+      }
+      for (i = 1; i < this.particleCount; i++) {
+        var rp2 = new Vector2(this.particles[i].position.x, this.particles[i].position.y);
+        rp2.Sub(this.particles[i - 1].position);
+        rp2.Normalize();
+        rp2.Mul(this.particleDist);
+        rp2.Add(this.particles[i - 1].position);
+        this.particles[i].position = rp2;
+      }
+      if (this.position.y > ConfettiRibbon.bounds.y + this.particleDist * this.particleCount) {
+        this.Reset();
       }
     }
-  };
-
-  this.stop = function() {
-    var i;
-    this.freeze();
-    for (i=0; i<this.flakes.length; i++) {
-      this.flakes[i].o.style.display = 'none';
-    }
-    storm.events.remove(window,'scroll',storm.scrollHandler);
-    storm.events.remove(window,'resize',storm.resizeHandler);
-    if (storm.freezeOnBlur) {
-      if (isIE) {
-        storm.events.remove(document,'focusout',storm.freeze);
-        storm.events.remove(document,'focusin',storm.resume);
-      } else {
-        storm.events.remove(window,'blur',storm.freeze);
-        storm.events.remove(window,'focus',storm.resume);
+    this.Reset = function() {
+      this.position.y = -random() * ConfettiRibbon.bounds.y;
+      this.position.x = random() * ConfettiRibbon.bounds.x;
+      this.prevPosition = new Vector2(this.position.x, this.position.y);
+      this.velocityInherit = random() * 2 + 4;
+      this.time = random() * 100;
+      this.oscillationSpeed = random() * 2.0 + 1.5;
+      this.oscillationDistance = (random() * 40 + 40);
+      this.ySpeed = random() * 40 + 80;
+      var ci = round(random() * (colors.length - 1));
+      this.frontColor = colors[ci][0];
+      this.backColor = colors[ci][1];
+      this.particles = new Array();
+      for (var i = 0; i < this.particleCount; i++) {
+        this.particles[i] = new EulerMass(this.position.x, this.position.y - i * this.particleDist, this.particleMass, this.particleDrag);
       }
     }
-  };
-
-  this.show = function() {
-    var i;
-    for (i=0; i<this.flakes.length; i++) {
-      this.flakes[i].o.style.display = 'block';
-    }
-  };
-
-  this.SnowFlake = function(type,x,y) {
-    var s = this;
-    this.type = type;
-    this.x = x||parseInt(rnd(screenX-20),10);
-    this.y = (!isNaN(y)?y:-rnd(screenY)-12);
-    this.vX = null;
-    this.vY = null;
-    this.vAmpTypes = [1,1.2,1.4,1.6,1.8]; // "amplification" for vX/vY (based on flake size/type)
-    this.vAmp = this.vAmpTypes[this.type] || 1;
-    this.melting = false;
-    this.meltFrameCount = storm.meltFrameCount;
-    this.meltFrames = storm.meltFrames;
-    this.meltFrame = 0;
-    this.twinkleFrame = 0;
-    this.active = 1;
-    this.fontSize = (10+(this.type/5)*10);
-    this.o = document.createElement('div');
-    this.o.innerHTML = storm.snowCharacter;
-    if (storm.className) {
-      this.o.setAttribute('class', storm.className);
-    }
-    this.o.style.color = storm.snowColor;
-    this.o.style.position = (fixedForEverything?'fixed':'absolute');
-    if (storm.useGPU && features.transform.prop) {
-      // GPU-accelerated snow.
-      this.o.style[features.transform.prop] = 'translate3d(0px, 0px, 0px)';
-    }
-    this.o.style.width = storm.flakeWidth+'px';
-    this.o.style.height = storm.flakeHeight+'px';
-    this.o.style.fontFamily = 'arial,verdana';
-    this.o.style.cursor = 'default';
-    this.o.style.overflow = 'hidden';
-    this.o.style.fontWeight = 'normal';
-    this.o.style.zIndex = storm.zIndex;
-    docFrag.appendChild(this.o);
-
-    this.refresh = function() {
-      if (isNaN(s.x) || isNaN(s.y)) {
-        // safety check
-        return false;
-      }
-      storm.setXY(s.o, s.x, s.y);
-    };
-
-    this.stick = function() {
-      if (noFixed || (storm.targetElement !== document.documentElement && storm.targetElement !== document.body)) {
-        s.o.style.top = (screenY+scrollY-storm.flakeHeight)+'px';
-      } else if (storm.flakeBottom) {
-        s.o.style.top = storm.flakeBottom+'px';
-      } else {
-        s.o.style.display = 'none';
-        s.o.style.bottom = '0%';
-        s.o.style.position = 'fixed';
-        s.o.style.display = 'block';
-      }
-    };
-
-    this.vCheck = function() {
-      if (s.vX>=0 && s.vX<0.2) {
-        s.vX = 0.2;
-      } else if (s.vX<0 && s.vX>-0.2) {
-        s.vX = -0.2;
-      }
-      if (s.vY>=0 && s.vY<0.2) {
-        s.vY = 0.2;
-      }
-    };
-
-    this.move = function() {
-      var vX = s.vX*windOffset, yDiff;
-      s.x += vX;
-      s.y += (s.vY*s.vAmp);
-      if (s.x >= screenX || screenX-s.x < storm.flakeWidth) { // X-axis scroll check
-        s.x = 0;
-      } else if (vX < 0 && s.x-storm.flakeLeftOffset < -storm.flakeWidth) {
-        s.x = screenX-storm.flakeWidth-1; // flakeWidth;
-      }
-      s.refresh();
-      yDiff = screenY+scrollY-s.y+storm.flakeHeight;
-      if (yDiff<storm.flakeHeight) {
-        s.active = 0;
-        if (storm.snowStick) {
-          s.stick();
+    this.Draw = function(_g) {
+      for (var i = 0; i < this.particleCount - 1; i++) {
+        var p0 = new Vector2(this.particles[i].position.x + this.xOff, this.particles[i].position.y + this.yOff);
+        var p1 = new Vector2(this.particles[i + 1].position.x + this.xOff, this.particles[i + 1].position.y + this.yOff);
+        if (this.Side(this.particles[i].position.x, this.particles[i].position.y, this.particles[i + 1].position.x, this.particles[i + 1].position.y, p1.x, p1.y) < 0) {
+          _g.fillStyle = this.frontColor;
+          _g.strokeStyle = this.frontColor;
         } else {
-          s.recycle();
+          _g.fillStyle = this.backColor;
+          _g.strokeStyle = this.backColor;
         }
-      } else {
-        if (storm.useMeltEffect && s.active && s.type < 3 && !s.melting && Math.random()>0.998) {
-          // ~1/1000 chance of melting mid-air, with each frame
-          s.melting = true;
-          s.melt();
-          // only incrementally melt one frame
-          // s.melting = false;
-        }
-        if (storm.useTwinkleEffect) {
-          if (s.twinkleFrame < 0) {
-            if (Math.random() > 0.97) {
-              s.twinkleFrame = parseInt(Math.random() * 8, 10);
-            }
-          } else {
-            s.twinkleFrame--;
-            if (!opacitySupported) {
-              s.o.style.visibility = (s.twinkleFrame && s.twinkleFrame % 2 === 0 ? 'hidden' : 'visible');
-            } else {
-              s.o.style.opacity = (s.twinkleFrame && s.twinkleFrame % 2 === 0 ? 0 : 1);
-            }
-          }
-        }
-      }
-    };
-
-    this.animate = function() {
-      // main animation loop
-      // move, check status, die etc.
-      s.move();
-    };
-
-    this.setVelocities = function() {
-      s.vX = vRndX+rnd(storm.vMaxX*0.12,0.1);
-      s.vY = vRndY+rnd(storm.vMaxY*0.12,0.1);
-    };
-
-    this.setOpacity = function(o,opacity) {
-      if (!opacitySupported) {
-        return false;
-      }
-      o.style.opacity = opacity;
-    };
-
-    this.melt = function() {
-      if (!storm.useMeltEffect || !s.melting) {
-        s.recycle();
-      } else {
-        if (s.meltFrame < s.meltFrameCount) {
-          s.setOpacity(s.o,s.meltFrames[s.meltFrame]);
-          s.o.style.fontSize = s.fontSize-(s.fontSize*(s.meltFrame/s.meltFrameCount))+'px';
-          s.o.style.lineHeight = storm.flakeHeight+2+(storm.flakeHeight*0.75*(s.meltFrame/s.meltFrameCount))+'px';
-          s.meltFrame++;
+        if (i == 0) {
+          _g.beginPath();
+          _g.moveTo(this.particles[i].position.x * retina, this.particles[i].position.y * retina);
+          _g.lineTo(this.particles[i + 1].position.x * retina, this.particles[i + 1].position.y * retina);
+          _g.lineTo(((this.particles[i + 1].position.x + p1.x) * 0.5) * retina, ((this.particles[i + 1].position.y + p1.y) * 0.5) * retina);
+          _g.closePath();
+          _g.stroke();
+          _g.fill();
+          _g.beginPath();
+          _g.moveTo(p1.x * retina, p1.y * retina);
+          _g.lineTo(p0.x * retina, p0.y * retina);
+          _g.lineTo(((this.particles[i + 1].position.x + p1.x) * 0.5) * retina, ((this.particles[i + 1].position.y + p1.y) * 0.5) * retina);
+          _g.closePath();
+          _g.stroke();
+          _g.fill();
+        } else if (i == this.particleCount - 2) {
+          _g.beginPath();
+          _g.moveTo(this.particles[i].position.x * retina, this.particles[i].position.y * retina);
+          _g.lineTo(this.particles[i + 1].position.x * retina, this.particles[i + 1].position.y * retina);
+          _g.lineTo(((this.particles[i].position.x + p0.x) * 0.5) * retina, ((this.particles[i].position.y + p0.y) * 0.5) * retina);
+          _g.closePath();
+          _g.stroke();
+          _g.fill();
+          _g.beginPath();
+          _g.moveTo(p1.x * retina, p1.y * retina);
+          _g.lineTo(p0.x * retina, p0.y * retina);
+          _g.lineTo(((this.particles[i].position.x + p0.x) * 0.5) * retina, ((this.particles[i].position.y + p0.y) * 0.5) * retina);
+          _g.closePath();
+          _g.stroke();
+          _g.fill();
         } else {
-          s.recycle();
+          _g.beginPath();
+          _g.moveTo(this.particles[i].position.x * retina, this.particles[i].position.y * retina);
+          _g.lineTo(this.particles[i + 1].position.x * retina, this.particles[i + 1].position.y * retina);
+          _g.lineTo(p1.x * retina, p1.y * retina);
+          _g.lineTo(p0.x * retina, p0.y * retina);
+          _g.closePath();
+          _g.stroke();
+          _g.fill();
         }
       }
-    };
-
-    this.recycle = function() {
-      s.o.style.display = 'none';
-      s.o.style.position = (fixedForEverything?'fixed':'absolute');
-      s.o.style.bottom = 'auto';
-      s.setVelocities();
-      s.vCheck();
-      s.meltFrame = 0;
-      s.melting = false;
-      s.setOpacity(s.o,1);
-      s.o.style.padding = '0px';
-      s.o.style.margin = '0px';
-      s.o.style.fontSize = s.fontSize+'px';
-      s.o.style.lineHeight = (storm.flakeHeight+2)+'px';
-      s.o.style.textAlign = 'center';
-      s.o.style.verticalAlign = 'baseline';
-      s.x = parseInt(rnd(screenX-storm.flakeWidth-20),10);
-      s.y = parseInt(rnd(screenY)*-1,10)-storm.flakeHeight;
-      s.refresh();
-      s.o.style.display = 'block';
-      s.active = 1;
-    };
-
-    this.recycle(); // set up x/y coords etc.
-    this.refresh();
-
-  };
-
-  this.snow = function() {
-    var active = 0, flake = null, i, j;
-    for (i=0, j=storm.flakes.length; i<j; i++) {
-      if (storm.flakes[i].active === 1) {
-        storm.flakes[i].move();
-        active++;
-      }
-      if (storm.flakes[i].melting) {
-        storm.flakes[i].melt();
-      }
     }
-    if (active<storm.flakesMaxActive) {
-      flake = storm.flakes[parseInt(rnd(storm.flakes.length),10)];
-      if (flake.active === 0) {
-        flake.melting = true;
-      }
+    this.Side = function(x1, y1, x2, y2, x3, y3) {
+      return ((x1 - x2) * (y3 - y2) - (y1 - y2) * (x3 - x2));
     }
-    if (storm.timer) {
-      features.getAnimationFrame(storm.snow);
-    }
-  };
-
-  this.mouseMove = function(e) {
-    if (!storm.followMouse) {
-      return true;
-    }
-    var x = parseInt(e.clientX,10);
-    if (x<screenX2) {
-      windOffset = -windMultiplier+(x/screenX2*windMultiplier);
-    } else {
-      x -= screenX2;
-      windOffset = (x/screenX2)*windMultiplier;
-    }
-  };
-
-  this.createSnow = function(limit,allowInactive) {
-    var i;
-    for (i=0; i<limit; i++) {
-      storm.flakes[storm.flakes.length] = new storm.SnowFlake(parseInt(rnd(flakeTypes),10));
-      if (allowInactive || i>storm.flakesMaxActive) {
-        storm.flakes[storm.flakes.length-1].active = -1;
-      }
-    }
-    storm.targetElement.appendChild(docFrag);
-  };
-
-  this.timerInit = function() {
-    storm.timer = true;
-    storm.snow();
-  };
-
-  this.init = function() {
-    var i;
-    for (i=0; i<storm.meltFrameCount; i++) {
-      storm.meltFrames.push(1-(i/storm.meltFrameCount));
-    }
-    storm.randomizeWind();
-    storm.createSnow(storm.flakesMax); // create initial batch
-    storm.events.add(window,'resize',storm.resizeHandler);
-    storm.events.add(window,'scroll',storm.scrollHandler);
-    if (storm.freezeOnBlur) {
-      if (isIE) {
-        storm.events.add(document,'focusout',storm.freeze);
-        storm.events.add(document,'focusin',storm.resume);
-      } else {
-        storm.events.add(window,'blur',storm.freeze);
-        storm.events.add(window,'focus',storm.resume);
-      }
-    }
-    storm.resizeHandler();
-    storm.scrollHandler();
-    if (storm.followMouse) {
-      storm.events.add(isIE?document:window,'mousemove',storm.mouseMove);
-    }
-    storm.animationInterval = Math.max(20,storm.animationInterval);
-    storm.timerInit();
-  };
-
-  this.start = function(bFromOnLoad) {
-    if (!didInit) {
-      didInit = true;
-    } else if (bFromOnLoad) {
-      // already loaded and running
-      return true;
-    }
-    if (typeof storm.targetElement === 'string') {
-      var targetID = storm.targetElement;
-      storm.targetElement = document.getElementById(targetID);
-      if (!storm.targetElement) {
-        throw new Error('Snowstorm: Unable to get targetElement "'+targetID+'"');
-      }
-    }
-    if (!storm.targetElement) {
-      storm.targetElement = (document.body || document.documentElement);
-    }
-    if (storm.targetElement !== document.documentElement && storm.targetElement !== document.body) {
-      // re-map handler to get element instead of screen dimensions
-      storm.resizeHandler = storm.resizeHandlerAlt;
-      //and force-enable pixel positioning
-      storm.usePixelPosition = true;
-    }
-    storm.resizeHandler(); // get bounding box elements
-    storm.usePositionFixed = (storm.usePositionFixed && !noFixed && !storm.flakeBottom); // whether or not position:fixed is to be used
-    if (window.getComputedStyle) {
-      // attempt to determine if body or user-specified snow parent element is relatlively-positioned.
-      try {
-        targetElementIsRelative = (window.getComputedStyle(storm.targetElement, null).getPropertyValue('position') === 'relative');
-      } catch(e) {
-        // oh well
-        targetElementIsRelative = false;
-      }
-    }
-    fixedForEverything = storm.usePositionFixed;
-    if (screenX && screenY && !storm.disabled) {
-      storm.init();
-      storm.active = true;
-    }
-  };
-
-  function doDelayedStart() {
-    window.setTimeout(function() {
-      storm.start(true);
-    }, 20);
-    // event cleanup
-    storm.events.remove(isIE?document:window,'mousemove',doDelayedStart);
   }
-
-  function doStart() {
-    if (!storm.excludeMobile || !isMobile) {
-      doDelayedStart();
+  ConfettiRibbon.bounds = new Vector2(0, 0);
+  confetti = {};
+  confetti.Context = function(id) {
+    var i = 0;
+    var canvas = document.getElementById(id);
+    var canvasParent = canvas.parentNode;
+    var canvasWidth = canvasParent.offsetWidth;
+    var canvasHeight = canvasParent.offsetHeight;
+    canvas.width = canvasWidth * retina;
+    canvas.height = canvasHeight * retina;
+    var context = canvas.getContext('2d');
+    var interval = null;
+    var confettiRibbons = new Array();
+    ConfettiRibbon.bounds = new Vector2(canvasWidth, canvasHeight);
+    for (i = 0; i < confettiRibbonCount; i++) {
+      confettiRibbons[i] = new ConfettiRibbon(random() * canvasWidth, -random() * canvasHeight * 2, ribbonPaperCount, ribbonPaperDist, ribbonPaperThick, 45, 1, 0.05);
     }
-    // event cleanup
-    storm.events.remove(window, 'load', doStart);
+    var confettiPapers = new Array();
+    ConfettiPaper.bounds = new Vector2(canvasWidth, canvasHeight);
+    for (i = 0; i < confettiPaperCount; i++) {
+      confettiPapers[i] = new ConfettiPaper(random() * canvasWidth, random() * canvasHeight);
+    }
+    this.resize = function() {
+      canvasWidth = canvasParent.offsetWidth;
+      canvasHeight = canvasParent.offsetHeight;
+      canvas.width = canvasWidth * retina;
+      canvas.height = canvasHeight * retina;
+      ConfettiPaper.bounds = new Vector2(canvasWidth, canvasHeight);
+      ConfettiRibbon.bounds = new Vector2(canvasWidth, canvasHeight);
+    }
+    this.start = function() {
+      this.stop()
+      var context = this;
+      this.update();
+    }
+    this.stop = function() {
+      cAF(this.interval);
+    }
+    this.update = function() {
+      var i = 0;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      for (i = 0; i < confettiPaperCount; i++) {
+        confettiPapers[i].Update(duration);
+        confettiPapers[i].Draw(context);
+      }
+      for (i = 0; i < confettiRibbonCount; i++) {
+        confettiRibbons[i].Update(duration);
+        confettiRibbons[i].Draw(context);
+      }
+      this.interval = rAF(function() {
+        confetti.update();
+      });
+    }
   }
-
-  // hooks for starting the snow
-  if (storm.autoStart) {
-    storm.events.add(window, 'load', doStart, false);
-  }
-
-  return this;
-
-}(window, document));
+  var confetti = new confetti.Context('confetti');
+  confetti.start();
+  window.addEventListener('resize', function(event){
+    confetti.resize();
+  });
+});
