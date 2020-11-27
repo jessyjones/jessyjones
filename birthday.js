@@ -1,3 +1,6 @@
+snowStorm.toggleSnow()
+
+
 var myObj = [{nom: "Fanny", moisAnniversaire: 09, jourAnniversaire:18},
              {nom: "Manon", moisAnniversaire: 11, jourAnniversaire:27},
              {nom: "Francelin", moisAnniversaire: 7, jourAnniversaire:30},
