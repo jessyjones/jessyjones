@@ -1,5 +1,5 @@
 var myObj = [{nom: "Fanny", moisAnniversaire: 09, jourAnniversaire:18},
-             {nom: "Manon", moisAnniversaire: 11, jourAnniversaire:8},
+             {nom: "Manon", moisAnniversaire: 11, jourAnniversaire:27},
              {nom: "Francelin", moisAnniversaire: 7, jourAnniversaire:30},
              {nom: "Noëmie", moisAnniversaire: 6, jourAnniversaire:21},
              {nom: "Margaux", moisAnniversaire: 2, jourAnniversaire:5},
@@ -28,10 +28,13 @@ let counter = 0;
           // différence de jours
   var days_Diff = time_diff / (1000 * 3600 * 24);
          // afficher la différence
- if (days_Diff < 15){
+ if (days_Diff < 15 && days_Diff != 0){
    document.getElementById("birthdaypredictor").innerHTML+= "C’est l’anniversaire de " + myObj[i].nom + "le " + myObj[i].jourAnniversaire;
    //console.log("C’est l’anniversaire de " + myObj[i].nom + " le " + myObj[i].jourAnniversaire);
    counter += 1;
+ }
+ else if (days_Diff == 0){
+  document.getElementById("birthdaypredictor").innerHTML+= "C’est l’anniversaire de " + myObj[i].nom + " aujourd'hui ! 😃";
  }
 }
 if(counter === 0){
