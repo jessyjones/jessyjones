@@ -14,8 +14,7 @@ let anniversaire = "";
 let counter = 0;
     for (i = 0; i < myObj.length; i++) {
  if (((d.getMonth()+1)>myObj[i].moisAnniversaire) ||
-   (((d.getMonth()+1) === myObj[i].moisAnniversaire) && (dateAuj > myObj[i].jourAnniversaire)))
-                                                                       {
+   (((d.getMonth()+1) === myObj[i].moisAnniversaire) && (dateAuj > myObj[i].jourAnniversaire))){
    anniversaire = new Date(d.getFullYear()+1, myObj[i].moisAnniversaire -1, myObj[i].jourAnniversaire)
      //console.log("b anniversaire="+anniversaire)
   } else {
