@@ -16,6 +16,7 @@ html, body {
 }
 #birthdaypredictor{
   text-align: center;
+  padding-top:3em;
   font-size: 2em;
   color: #444444;
   font-family: 'La Belle Aurore', cursive;

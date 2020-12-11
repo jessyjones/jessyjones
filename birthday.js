@@ -11,9 +11,19 @@ var myObj = [{nom: "Fanny", moisAnniversaire: 09, jourAnniversaire:18},
              {nom: "Francelin", moisAnniversaire: 7, jourAnniversaire:30},
              {nom: "Josiane", moisAnniversaire: 1, jourAnniversaire:26},
              {nom: "Laurine", moisAnniversaire: 9, jourAnniversaire:16},
-             {nom: "Laurine", moisAnniversaire: 9, jourAnniversaire:16},
-
-
+             {nom: "Mathilde", moisAnniversaire: 11, jourAnniversaire:22},
+             {nom: "Nicolas", moisAnniversaire: 11, jourAnniversaire:10},
+             {nom: "Nils", moisAnniversaire: 9, jourAnniversaire:9},
+             {nom: "Mathilde", moisAnniversaire: 11, jourAnniversaire:22},
+             {nom: "Patricia", moisAnniversaire: 6, jourAnniversaire:21},
+             {nom: "Quentin", moisAnniversaire: 5, jourAnniversaire:11},
+             {nom: "Salma", moisAnniversaire: 8, jourAnniversaire:16},
+             {nom: "Soumayat", moisAnniversaire: 11, jourAnniversaire:13},
+             {nom: "Waranyu", moisAnniversaire: 11, jourAnniversaire:5},
+             {nom: "Alya", moisAnniversaire: 10, jourAnniversaire:4},
+             {nom: "Chloé", moisAnniversaire: 9, jourAnniversaire:9},
+             {nom: "Claire", moisAnniversaire: 9, jourAnniversaire:15},
+             {nom: "Pauline", moisAnniversaire: 3, jourAnniversaire:25}
             ]
 var d = new Date();
 var moisAuj = d.getMonth() + 1 ;
