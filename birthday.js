@@ -3,7 +3,18 @@ var myObj = [{nom: "Fanny", moisAnniversaire: 09, jourAnniversaire:18},
              {nom: "Francelin", moisAnniversaire: 7, jourAnniversaire:30},
              {nom: "Noëmie", moisAnniversaire: 6, jourAnniversaire:21},
              {nom: "Margaux", moisAnniversaire: 12, jourAnniversaire:11},
-             {nom: "Joanna", moisAnniversaire: 12, jourAnniversaire:18}]
+             {nom: "Joanna", moisAnniversaire: 12, jourAnniversaire:18},
+             {nom: "Adrien", moisAnniversaire: 05, jourAnniversaire:25},
+             {nom: "Olivier", moisAnniversaire: 11, jourAnniversaire:18},
+             {nom: "Alice", moisAnniversaire: 10, jourAnniversaire:31},
+             {nom: "Clémence", moisAnniversaire: 6, jourAnniversaire:10},
+             {nom: "Francelin", moisAnniversaire: 7, jourAnniversaire:30},
+             {nom: "Josiane", moisAnniversaire: 1, jourAnniversaire:26},
+             {nom: "Laurine", moisAnniversaire: 9, jourAnniversaire:16},
+             {nom: "Laurine", moisAnniversaire: 9, jourAnniversaire:16},
+
+
+            ]
 var d = new Date();
 var moisAuj = d.getMonth() + 1 ;
 var dateAuj = d.getDate()
@@ -38,7 +49,7 @@ let counter = 0;
   console.log("anniversaire ajd")
   document.getElementById("birthdaypredictor").innerHTML+= "C’est l’anniversaire de " + myObj[i].nom + " aujourd'hui ! <br><br>✨🎉🎁🔥<br><br>";
   counter += 1;
-  var retina = window.devicePixelRatio,
+  var retina = 1,
 
     // Math shorthands
     PI = Math.PI,
