@@ -2,7 +2,7 @@ var myObj = [{nom: "Fanny", moisAnniversaire: 09, jourAnniversaire:18},
              {nom: "Manon", moisAnniversaire: 11, jourAnniversaire:8},
              {nom: "Francelin", moisAnniversaire: 7, jourAnniversaire:30},
              {nom: "Noëmie", moisAnniversaire: 6, jourAnniversaire:21},
-             {nom: "Margaux", moisAnniversaire: 2, jourAnniversaire:5},
+             {nom: "Margaux", moisAnniversaire: 12, jourAnniversaire:11},
              {nom: "Joanna", moisAnniversaire: 12, jourAnniversaire:18}]
 var d = new Date();
 var moisAuj = d.getMonth() + 1 ;
